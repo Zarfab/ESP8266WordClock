@@ -1,0 +1,27 @@
+{
+  "color":"#ffffff",
+  "palette":"",
+  "palette_values": [
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff",
+    "#ffffff"
+  ],
+  "brightness": {
+    "auto":false,
+    "level":47
+  },
+  "location":"Europe/Paris"
+}
