@@ -16,7 +16,7 @@
 
 #define CONFIG_FILE "/last_config.json"
 
-#define REQUEST_EVERY 1200 // request time every 20 minutes (1 200 seconds)
+#define REQUEST_EVERY 3600 // request time every hour (3600 seconds)
 #define REFRESH_EVERY 30 // refresh time string every 30 seconds
 #define PHOTORESISTOR_LOW 40
 #define PHOTORESISTOR_HIGH 900
@@ -372,6 +372,7 @@ void setup() {
     updateTimeString();
   }
 
+  // switch off on board blue LED
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
@@ -587,10 +588,10 @@ void updateTimeString() {
       timeString += "vingt cinq";
       break;
     case 6: // between 28 and 32 minutes
-      timeString += "et demie";
+      timeString += "demie et"; // invert 'demie' and 'et' because 'et' is on the lower row
       break;
     case 9: // between 43 and 47 minutes
-      timeString += "quart";
+      timeString += "le quart";
       break;
     case 12: // 58 minutes and above
       break;

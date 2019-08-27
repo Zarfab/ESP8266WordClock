@@ -114,8 +114,8 @@ const String letters[] = {
   "dixshuitbneuf",
   "troismidionze",
   "pheureskmoins",
-  "dixvingtacinq",
-  "etjquartdemie"
+  "dixvingtdemie",
+  "letjquartcinq"
 };
 
 
