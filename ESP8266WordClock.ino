@@ -11,13 +11,14 @@
 
 #include "display_utils.h"
 
-
+#define VERSION 1 // 0 = old letters layout, above = new
 #define SERIAL_DEBUG Serial
 
 #define CONFIG_FILE "/last_config.json"
 
 #define REQUEST_EVERY 3600 // request time every hour (3600 seconds)
 #define REFRESH_EVERY 30 // refresh time string every 30 seconds
+#define IGNORE_SYNC_ERROR_FOR 86400 // ignore sync error for 24h (24 * 3600)
 #define PHOTORESISTOR_LOW 40
 #define PHOTORESISTOR_HIGH 900
 
@@ -54,6 +55,7 @@ unsigned int requestTimer;
 unsigned int refreshTimer;
 String datetime; // "2000-01-30T10:00:0.000000+01:00";
 String timeString;
+int32_t lastTimeSync = 0;
 
 String message;
 int messageIndex = -1;
@@ -439,7 +441,8 @@ void loop() {
     requestTimer = 0;
     leds[STATUS_LED] = CRGB::White;
     FastLED.show();
-    if(requestTime()) {
+    boolean timeSync = requestTime();
+    if(timeSync || (millis()/1000 - lastTimeSync < IGNORE_SYNC_ERROR_FOR && lastTimeSync > 0)) {
       #ifdef SERIAL_DEBUG
       SERIAL_DEBUG.printf("Auto request : %02d:%02d:%02d at %s\n", hours, minutes, seconds, location.c_str());
       #endif
@@ -503,7 +506,7 @@ bool requestTime() {
   }
   // Allocate JsonBuffer
   // Use arduinojson.org/assistant to compute the capacity.
-  const size_t capacity = JSON_OBJECT_SIZE(3) + JSON_ARRAY_SIZE(2) + 60;
+  const size_t capacity = JSON_OBJECT_SIZE(15) + 350;
   DynamicJsonDocument doc(capacity);
   // Parse JSON object
   DeserializationError error = deserializeJson(doc, client);
@@ -524,6 +527,7 @@ bool requestTime() {
   seconds = round(datetime.substring(17, 25).toFloat());
   // Disconnect
   client.stop();
+  lastTimeSync = millis() / 1000;
   return true;
 }
 
@@ -619,7 +623,11 @@ void updateTimeString() {
       timeString += "vingt cinq";
       break;
     case 6: // between 28 and 32 minutes
+    #if (VERSION == 0)
+      timeString += "et demie";
+    #else
       timeString += "demie et"; // invert 'demie' and 'et' because 'et' is on the lower row
+    #endif
       break;
     case 9: // between 43 and 47 minutes
       timeString += "le quart";

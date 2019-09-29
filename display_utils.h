@@ -107,6 +107,18 @@ static const uint8_t digits[10][8][3] = {
   }
 };
 
+#if (VERSION == 0)
+const String letters[] = {
+  "ilyestrunesix",
+  "quatrelminuit",
+  "cinqwdeuxsept",
+  "dixshuitbneuf",
+  "troismidionze",
+  "pheureskmoins",
+  "dixvingtacinq",
+  "etjquartdemie"
+};
+#else
 const String letters[] = {
   "ilyestrunesix",
   "quatrelminuit",
@@ -117,6 +129,7 @@ const String letters[] = {
   "dixvingtdemie",
   "letjquartcinq"
 };
+#endif
 
 
 const int indexes[26][16] = {  
