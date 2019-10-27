@@ -1,7 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
-#include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #define FASTLED_INTERNAL // Disable version number message in FastLED library (looks like an error)
 #include <FastLED.h>
@@ -11,7 +10,6 @@
 
 #include "display_utils.h"
 
-#define VERSION 1 // 0 = old letters layout, above = new
 #define SERIAL_DEBUG Serial
 
 #define CONFIG_FILE "/last_config.json"
@@ -338,42 +336,6 @@ void setup() {
   WiFiManager wifiManager;
   wifiManager.autoConnect("WordClockAP");
 
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_SPIFFS
-      type = "filesystem";
-    }
-    SPIFFS.end();
-    Serial.println("Start updating " + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-    delay(1000);
-    ESP.restart();
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-    delay(1000);
-    ESP.restart();
-  });
-  ArduinoOTA.begin();
-
   server.on("/", HTTP_GET, handleRoot);
   server.on("/", HTTP_POST, handleConfig);
   server.on("/config_data.json", sendConfigData);
@@ -412,7 +374,6 @@ void setup() {
 
 
 void loop() {
-  ArduinoOTA.handle();
   server.handleClient();
 
   if(millis() - FastLedTimer >= FASTLED_REFRESH) {
@@ -426,8 +387,12 @@ void loop() {
                                 MIN_BRIGHTNESS, MAX_BRIGHTNESS));
     brightnessLevelTarget = brightnessFilter.out();
   }
-
+  else {
+    delay(10);
+  }
+  
   if(brightnessLevel != brightnessLevelTarget) {
+    //Serial.printf("current = %i, target = %i\n", brightnessLevel, brightnessLevelTarget);
     brightnessLevel = brightnessLevelTarget;
     FastLED.setBrightness(brightnessLevel);
   }
@@ -637,7 +602,7 @@ void updateTimeString() {
     default:
       break;
   }
-  
+  Serial.println(timeString);
   // update boolean array with new words
   for(int i = 0; i < NB_LEDS; i++)
     ledState[i] = false;
