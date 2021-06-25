@@ -450,7 +450,7 @@ bool requestTime() {
     return false;
   }
   // Check HTTP status
-  char status[32] = {0};
+  /*char status[64] = {0};
   client.readBytesUntil('\r', status, sizeof(status)); 
   if (strstr(status, "200 OK") != NULL) {
     #ifdef SERIAL_DEBUG
@@ -459,7 +459,7 @@ bool requestTime() {
     #endif
     errorCode = 0x73;
     return false;
-  }
+  }*/
   // Skip HTTP headers
   char endOfHeaders[] = "\r\n\r\n";
   if (!client.find(endOfHeaders)) {
@@ -653,11 +653,9 @@ void updateLedArray() {
     for(int i = 3; i < 10; i++) {
       leds[i] = CRGB::Red;
     }
-    Serial.println(errorCode, BIN);
     for(int i = 6; i >=0; i--) {
       int index = i + 55;
       uint8_t bitval = errorCode & uint8_t(pow(2, 6-i));
-      Serial.printf("ErrorCode[%i] = %i\n", i, bitval);
       if(bitval > 0)
         leds[index] = CRGB::Orange;
       else
