@@ -326,7 +326,6 @@ void setup() {
   brightnessLevelTarget = brightnessLevel;
   
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NB_LEDS).setCorrection( TypicalLEDStrip );
-  //FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, 1).setCorrection( TypicalLEDStrip );
   FastLED.setBrightness(brightnessLevel);
   fill_solid(leds, NB_LEDS, CRGB::Black);
   leds[STATUS_LED] = CRGB::Red;
@@ -380,6 +379,7 @@ void loop() {
     colorIndex++;
     FastLedTimer = millis();
     updateLedArray();
+    FastLED.show();
   }
 
   if(brightnessAuto) {
@@ -451,8 +451,8 @@ bool requestTime() {
   }
   // Check HTTP status
   char status[32] = {0};
-  client.readBytesUntil('\r', status, sizeof(status));
-  if (strcmp(status, "HTTP/1.1 200 OK") != 0) {
+  client.readBytesUntil('\r', status, sizeof(status)); 
+  if (strstr(status, "200 OK") != NULL) {
     #ifdef SERIAL_DEBUG
     SERIAL_DEBUG.print(F("Unexpected response: "));
     SERIAL_DEBUG.println(status);
@@ -653,10 +653,15 @@ void updateLedArray() {
     for(int i = 3; i < 10; i++) {
       leds[i] = CRGB::Red;
     }
+    Serial.println(errorCode, BIN);
     for(int i = 6; i >=0; i--) {
       int index = i + 55;
-      if(errorCode & uint8_t(pow(2, i)) > 0)
+      uint8_t bitval = errorCode & uint8_t(pow(2, 6-i));
+      Serial.printf("ErrorCode[%i] = %i\n", i, bitval);
+      if(bitval > 0)
         leds[index] = CRGB::Orange;
+      else
+        leds[index] = CRGB::Black;
     }
     for(int i = 94; i < 101; i++) {
       leds[i] = CRGB::Red;
