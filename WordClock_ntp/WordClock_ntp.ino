@@ -47,7 +47,6 @@ int brightnessLevel = MAX_BRIGHTNESS / 2;
 int brightnessLevelTarget = brightnessLevel;
 bool brightnessAuto = false;
 MedianFilter brightnessFilter(BRIGHTNESS_FILTER_SIZE, brightnessLevel);
-unsigned long FastLedTimer;
 
 String zone = "Europe";
 String city = "Paris";
@@ -123,7 +122,7 @@ void handleRoot() {
 
 
 void sendConfigData() {
-  StaticJsonDocument<600> doc;
+  StaticJsonDocument<800> doc;
   doc["color"] = crgbToHtmlString(color);
   doc["palette"] = paletteName;
   JsonArray paletteValues = doc.createNestedArray("palette_values");
@@ -140,7 +139,11 @@ void sendConfigData() {
   serializeJson(doc, data_str);
   File f = SPIFFS.open(CONFIG_FILE, "w");
   if(f) {
-   serializeJson(doc, f);
+    serializeJson(doc, f);
+    #ifdef SERIAL_DEBUG
+    SERIAL_DEBUG.println("Saving config file : ");
+    SERIAL_DEBUG.println(data_str);
+    #endif
   }
   f.close();
   server.send(200, "text/plain", data_str);
@@ -244,7 +247,7 @@ void setup() {
     #endif
   }
   else {
-    StaticJsonDocument<600> doc;
+    StaticJsonDocument<800> doc;
     deserializeJson(doc, f);
     // parse solid color //////////////////////////////////////////////////////////////
     String colorConfig = doc["color"];
@@ -280,6 +283,9 @@ void setup() {
       updateTzInfo();
     }
     f.close();
+    #ifdef SERIAL_DEBUG
+      serializeJsonPretty(doc, SERIAL_DEBUG);
+    #endif
   }
 
   if(brightnessAuto) {
@@ -349,22 +355,13 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  if(millis() - FastLedTimer >= FASTLED_REFRESH) {
-    colorIndex++;
-    FastLedTimer = millis();
-    updateLedArray();
-    FastLED.show();
-  }
+  getTimeReducedTraffic(REQUEST_EVERY);
 
   if(brightnessAuto) {
     brightnessFilter.in(constrain(map(analogRead(A0), PHOTORESISTOR_LOW, PHOTORESISTOR_HIGH, MIN_BRIGHTNESS, MAX_BRIGHTNESS),
                                 MIN_BRIGHTNESS, MAX_BRIGHTNESS));
     brightnessLevelTarget = brightnessFilter.out();
-  }
-  else {
-    delay(10);
-  }
-  
+  }  
   if(brightnessLevel != brightnessLevelTarget) {
     //Serial.printf("current = %i, target = %i\n", brightnessLevel, brightnessLevelTarget);
     brightnessLevel = brightnessLevelTarget;
@@ -378,11 +375,12 @@ void loop() {
     #endif
     updateTimeString();
   }
-  
-  getTimeReducedTraffic(REQUEST_EVERY);
+
+  colorIndex++;
+  updateLedArray();
   
   FastLED.show();
-  FastLED.delay(50);
+  FastLED.delay(FASTLED_REFRESH);
 }
 
 
