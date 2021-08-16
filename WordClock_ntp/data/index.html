@@ -11,7 +11,7 @@
 		 var paletteName = "";
          
          function init() {
-			 getJSON('/timezone.json', function(err, data) {
+			 getJSON('/timezones.json', function(err, data) {
 				 if (err !== null) {
 					alert('Impossible to load timezone list : ' + err);
 				 } else {
@@ -95,8 +95,8 @@
 				if(zones[i].checked) worldzone = zones[i].value;
 			 }
 			 var cities = timezones[worldzone];
-			 for(var i = 0; i < cities.length; i++) {
-				var radioHtml = '<p><input type="radio" name="city" value="' + cities[i] + '"> ' + cities[i] + '</p>';
+			 for(var city in cities) {
+				var radioHtml = '<p><input type="radio" name="city" value="' + city + '"> ' + city + '</p>';
 				document.getElementById("cities").innerHTML += radioHtml;
 			 }
          }
@@ -140,11 +140,7 @@
 			paletteGradientStyle += ")";
 			document.getElementById("palette").style.background = paletteGradientStyle;
 		 }
-		 
-		 function hello() 
-		  {
-			alert("hello");
-		  }
+         
 			  
          var getJSON = function(url, callback) {
 			 var xhr = new XMLHttpRequest();

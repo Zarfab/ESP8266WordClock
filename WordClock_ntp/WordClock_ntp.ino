@@ -49,7 +49,7 @@ unsigned long FastLedTimer;
 
 String zone = "Europe";
 String city = "Paris";
-char* tzInfo = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
+String tzInfo = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
 tm timeinfo;
 time_t now;
 long unsigned lastNTPtime;
@@ -192,12 +192,18 @@ void handleConfig() {
     if(server.hasArg("zone")) {
       zone = server.arg("zone");
     }
+    updateTzInfo();
     
     #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.println("Change location to " + zone + "/" + city);
+    SERIAL_DEBUG.println("Change location to " + zone + "/" + city +
+      ", TZ_INFO = " + tzInfo);
     #endif
-    setenv("TZ", tzInfo, 1);
+    setenv("TZ", tzInfo.c_str(), 1);
     getNTPtime(10);
+    #ifdef SERIAL_DEBUG
+    SERIAL_DEBUG.printf("it is %02d:%02d:%02d at %s\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, city.c_str());
+    #endif
+    updateTimeString();
   }
   
   server.sendHeader("Location","/");        // Add a header to respond with a new location for the browser to go to the home page again
@@ -269,6 +275,7 @@ void setup() {
       if(zoneConfig) zone = zoneConfig;
       String cityConfig = locationConfig["city"];
       if(cityConfig) city = cityConfig;
+      updateTzInfo();
     }
     f.close();
   }
@@ -314,7 +321,7 @@ void setup() {
   displayLocalIp();
 
   configTime(0, 0, NTP_SERVER);
-  setenv("TZ", tzInfo, 1);
+  setenv("TZ", tzInfo.c_str(), 1);
   
   if(getNTPtime(10)) {
     #ifdef SERIAL_DEBUG
@@ -328,6 +335,7 @@ void setup() {
   }
   lastNTPtime = time(&now);
   lastEntryTime = millis();
+  refreshTimeStringTimer = millis();
 
   // switch off on board blue LED
   digitalWrite(LED_BUILTIN, HIGH);
@@ -361,8 +369,11 @@ void loop() {
     FastLED.setBrightness(brightnessLevel);
   }
 
-  if(refreshTimeStringTimer >= REFRESH_TIMESTRING_EVERY) {
-    refreshTimeStringTimer = 0;
+  if((millis() - refreshTimeStringTimer) / 1000 >= REFRESH_TIMESTRING_EVERY) {
+    refreshTimeStringTimer = millis();
+    #ifdef SERIAL_DEBUG
+    SERIAL_DEBUG.printf("it is %02d:%02d:%02d at %s\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, city.c_str());
+    #endif
     updateTimeString();
   }
   
@@ -384,11 +395,9 @@ bool getNTPtime(int sec) {
     do {
       time(&now);
       localtime_r(&now, &timeinfo);
-      Serial.print(".");
       delay(10);
     } while (((millis() - start) <= (1000 * sec)) && (timeinfo.tm_year < (2016 - 1900)));
     if (timeinfo.tm_year <= (2016 - 1900)) return false;  // the NTP call was not successful
-    Serial.print("now ");  Serial.println(now);
     char time_output[30];
     strftime(time_output, 30, "%a  %d-%m-%Y %T", localtime(&now));
     Serial.println(time_output);
@@ -418,6 +427,31 @@ bool requestTime() {
   getTimeReducedTraffic(REQUEST_EVERY);
 }
 
+void updateTzInfo() {
+  File f = SPIFFS.open("/timezones.json", "r");
+  if (!f) {
+    #ifdef SERIAL_DEBUG
+      SERIAL_DEBUG.println("/timezones.json file open failed");
+    #endif
+  }
+  else {
+    StaticJsonDocument<200> filter;
+    filter[zone][city] = true;
+    StaticJsonDocument<400> doc;
+    DeserializationError error = deserializeJson(doc, f, DeserializationOption::Filter(filter));
+    if (error) {
+      #ifdef SERIAL_DEBUG
+      SERIAL_DEBUG.println(F("Failed to read file, using default configuration"));
+      #endif
+    }
+    else {
+      String tzInfoStr = doc[zone][city];
+      if(tzInfoStr) tzInfo = tzInfoStr;
+    }
+  }
+  f.close();
+}
+
 
 
 /**************************************************************/
@@ -425,7 +459,10 @@ bool requestTime() {
 /**************************************************************/
 void updateTimeString() {
   timeString = "il est ";
-  switch(timeinfo.tm_hour) {
+  int h = timeinfo.tm_hour;
+  if(timeinfo.tm_min + timeinfo.tm_sec / 30 > 32)
+    h++;
+  switch(h) {
     case 0:
     case 24:
       timeString += "minuit ";
