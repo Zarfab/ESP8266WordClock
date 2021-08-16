@@ -23,5 +23,8 @@
     "auto":false,
     "level":47
   },
-  "location":"Europe/Paris"
+  "location": {
+      "zone": "Europe",
+      "city": "Paris"
+  }
 }

@@ -39,7 +39,7 @@
 					 document.getElementById("brightness_auto").checked = data.brightness.auto;
 					 document.getElementById("brightness_level").value = data.brightness.level;
 					 
-					 var currentZone = data.location.split("/")[0];
+					 var currentZone = data.location.zone;
 					 var zones = document.getElementsByName("zone");
 					 for(var i = 0; i < zones.length; i++) {
 						 if(zones[i].value == currentZone) {
@@ -47,7 +47,7 @@
 						 }
 					 }
 					 refreshCities();
-					 var currentCity = data.location.substring(currentZone.length + 1);
+					 var currentCity = data.location.city;
 					 var cities = document.getElementsByName("city");
 					 for(var i = 0; i < cities.length; i++) {
 						 if(cities[i].value == currentCity) {

@@ -1,11 +1,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
+#include <time.h>
 #include <ArduinoJson.h>
 #define FASTLED_INTERNAL // Disable version number message in FastLED library (looks like an error)
 #include <FastLED.h>
 #include <FS.h>
-#include <Ticker.h>
 #include <MedianFilter.h>
 
 #include "display_utils.h"
@@ -13,9 +13,10 @@
 #define SERIAL_DEBUG Serial
 
 #define CONFIG_FILE "/last_config.json"
+#define NTP_SERVER  "pool.ntp.org"
 
-#define REQUEST_EVERY 3600 // request time every hour (3600 seconds)
-#define REFRESH_EVERY 30 // refresh time string every 30 seconds
+#define REQUEST_EVERY 1200 // request time 20 minutes (1200 seconds)
+#define REFRESH_TIMESTRING_EVERY 30 // refresh time string every 30 seconds
 #define IGNORE_SYNC_ERROR_FOR 86400 // ignore sync error for 24h (24 * 3600)
 #define PHOTORESISTOR_LOW 40
 #define PHOTORESISTOR_HIGH 900
@@ -46,21 +47,16 @@ bool brightnessAuto = false;
 MedianFilter brightnessFilter(BRIGHTNESS_FILTER_SIZE, brightnessLevel);
 unsigned long FastLedTimer;
 
-Ticker tick;
-int hours, minutes, seconds;
-String location;
-unsigned int requestTimer;
-unsigned int refreshTimer;
-String datetime; // "2000-01-30T10:00:0.000000+01:00";
+String zone = "Europe";
+String city = "Paris";
+char* tzInfo = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
+tm timeinfo;
+time_t now;
+long unsigned lastNTPtime;
+unsigned long lastEntryTime;
+unsigned int refreshTimeStringTimer;
 String timeString;
 int32_t lastTimeSync = 0;
-
-String message;
-int messageIndex = -1;
-int messageCount = 0;
-int messageRepeat = 3;
-int messageLetterIndex = 0;
-Ticker messageTick;
 
 
 /**************************************************************/
@@ -135,7 +131,9 @@ void sendConfigData() {
   JsonObject brightnessObj = doc.createNestedObject("brightness");
   brightnessObj["auto"] = brightnessAuto;
   brightnessObj["level"] = map(brightnessLevelTarget, MIN_BRIGHTNESS, MAX_BRIGHTNESS, 0, 100);
-  doc["location"] = location;
+  JsonObject locationObj = doc.createNestedObject("location");
+  locationObj["zone"] = zone;
+  locationObj["city"] = city;
   String data_str;
   serializeJson(doc, data_str);
   File f = SPIFFS.open(CONFIG_FILE, "w");
@@ -190,19 +188,16 @@ void handleConfig() {
                               0, 100, MIN_BRIGHTNESS, MAX_BRIGHTNESS), MIN_BRIGHTNESS, MAX_BRIGHTNESS);
   }
   if(server.hasArg("city")) {
-    String city = server.arg("city");
+    city = server.arg("city");
     if(server.hasArg("zone")) {
-      location = server.arg("zone") + "/" + city;
+      zone = server.arg("zone");
     }
-    else {
-      // keep current zone, modify city only
-      int separator = location.indexOf('/');
-      location = location.substring(0, separator+1) + city;
-    }
+    
     #ifdef SERIAL_DEBUG
-    //SERIAL_DEBUG.println("Change location to " + location);
+    SERIAL_DEBUG.println("Change location to " + zone + "/" + city);
     #endif
-    requestTimer = REQUEST_EVERY - 5; // the time string will be updated in loop() in 5 seconds
+    setenv("TZ", tzInfo, 1);
+    getNTPtime(10);
   }
   
   server.sendHeader("Location","/");        // Add a header to respond with a new location for the browser to go to the home page again
@@ -221,59 +216,16 @@ String crgbToHtmlString(CRGB color) {
 /**************************************************************/
 /****        Main functions                            ********/
 /**************************************************************/
-void tock() {
-  requestTimer++;
-  refreshTimer++;
-  // increment clock every second
-  seconds++;
-  if(seconds >= 60) {
-    seconds = 0;
-    minutes++;
-    if(minutes >= 60) {
-      minutes = 0;
-      hours++;
-      if(hours >= 24)
-        hours = 0;
-    }
-  }
-}
-
-
-void updateMessageIndex() {
-  if(message != "") {
-    messageIndex++;
-    if(messageIndex >= message.length()) {
-      messageIndex = -1;
-      messageCount++;
-      if(messageCount >= messageRepeat) {
-        messageCount = 0;
-        message = "";
-        messageIndex = -1;
-      }
-    }
-    else {
-      messageLetterIndex = getCharIndex(message.charAt(messageIndex));
-    }
-  }
-}
-
-
-
-
 void setup() {
+  #ifdef SERIAL_DEBUG
   Serial.begin(115200);
+  #endif
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
   delay(1000);
   Serial.println();
 
-  datetime.reserve(40);
-  timeString.reserve(48);
-  location.reserve(50);
-  message.reserve(140);
-  message = "";
-  messageTick.attach(1.2, updateMessageIndex);
-  location = "Europe/Paris";
+  timeString.reserve(64);
 
   SPIFFS.begin();
   // Parse stored values ///////////////////////////////////////////////////////////
@@ -311,8 +263,13 @@ void setup() {
                                   MIN_BRIGHTNESS, MAX_BRIGHTNESS);
     }
     // parse location ///////////////////////////////////////////////////////////////
-    String locationConfig = doc["location"];
-    if(locationConfig) location = locationConfig;
+    JsonObject locationConfig = doc["location"];
+    if(locationConfig) {
+      String zoneConfig = locationConfig["zone"];
+      if(zoneConfig) zone = zoneConfig;
+      String cityConfig = locationConfig["city"];
+      if(cityConfig) city = cityConfig;
+    }
     f.close();
   }
 
@@ -348,22 +305,29 @@ void setup() {
   SERIAL_DEBUG.println(F("HTTP server started"));
   #endif
 
-  requestTimer = 0;
-  refreshTimer = 1;
-  tick.attach(1.0, tock);
+  refreshTimeStringTimer = 1;
 
   leds[STATUS_LED] = CRGB::Green;
   FastLED.show();
   FastLED.delay(500);
 
   displayLocalIp();
+
+  configTime(0, 0, NTP_SERVER);
+  setenv("TZ", tzInfo, 1);
   
-  if(requestTime()) {
+  if(getNTPtime(10)) {
     #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.printf("it is %02d:%02d:%02d at %s\n", hours, minutes, seconds, location.c_str());
+    SERIAL_DEBUG.printf("it is %02d:%02d:%02d at %s\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, city.c_str());
     #endif
     updateTimeString();
   }
+  else {
+    Serial.println("Time not set");
+    ESP.restart();
+  }
+  lastNTPtime = time(&now);
+  lastEntryTime = millis();
 
   // switch off on board blue LED
   digitalWrite(LED_BUILTIN, HIGH);
@@ -397,103 +361,61 @@ void loop() {
     FastLED.setBrightness(brightnessLevel);
   }
 
-  if(refreshTimer >= REFRESH_EVERY) {
-    refreshTimer = 0;
+  if(refreshTimeStringTimer >= REFRESH_TIMESTRING_EVERY) {
+    refreshTimeStringTimer = 0;
     updateTimeString();
   }
   
-  if(requestTimer >= REQUEST_EVERY || errorCode > 0 && requestTimer >= 5) {
-    requestTimer = 0;
-    leds[STATUS_LED] = CRGB::White;
-    FastLED.show();
-    boolean timeSync = requestTime();
-    if(timeSync || (millis()/1000 - lastTimeSync < IGNORE_SYNC_ERROR_FOR && lastTimeSync > 0)) {
-      #ifdef SERIAL_DEBUG
-      SERIAL_DEBUG.printf("Auto request : %02d:%02d:%02d at %s\n", hours, minutes, seconds, location.c_str());
-      #endif
-      updateTimeString();
-      errorCode = 0x00;
-    }
-  }
+  getTimeReducedTraffic(REQUEST_EVERY);
   
   FastLED.show();
+  FastLED.delay(50);
 }
 
 
 
 /**************************************************************/
-/****        world time API function                   ********/
+/****        Time sync functions                       ********/
 /**************************************************************/
-// this function will update hours, minutes and seconds
-// based on the answer provided by worldtimeapi.org
-// it needs location to be correctly set up
-bool requestTime() {
-  // http://worldtimeapi.org/api/timezone/Europe/Paris
-  WiFiClient client;
-  client.setTimeout(10000);
-  if (!client.connect("worldtimeapi.org", 80)) {
-    #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.println(F("Connection failed"));
-    #endif
-    errorCode = 0x71;
-    return false;
+bool getNTPtime(int sec) {
+
+  {
+    uint32_t start = millis();
+    do {
+      time(&now);
+      localtime_r(&now, &timeinfo);
+      Serial.print(".");
+      delay(10);
+    } while (((millis() - start) <= (1000 * sec)) && (timeinfo.tm_year < (2016 - 1900)));
+    if (timeinfo.tm_year <= (2016 - 1900)) return false;  // the NTP call was not successful
+    Serial.print("now ");  Serial.println(now);
+    char time_output[30];
+    strftime(time_output, 30, "%a  %d-%m-%Y %T", localtime(&now));
+    Serial.println(time_output);
+    Serial.println();
   }
-  // Send HTTP request
-  client.println("GET /api/timezone/" + location + " HTTP/1.0");
-  client.println(F("Host: worldtimeapi.org"));
-  client.println(F("Connection: close"));
-  if (client.println() == 0) {
-    #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.println(F("Failed to send request"));
-    #endif
-    errorCode = 0x72;
-    return false;
-  }
-  // Check HTTP status
-  /*char status[64] = {0};
-  client.readBytesUntil('\r', status, sizeof(status)); 
-  if (strstr(status, "200 OK") != NULL) {
-    #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.print(F("Unexpected response: "));
-    SERIAL_DEBUG.println(status);
-    #endif
-    errorCode = 0x73;
-    return false;
-  }*/
-  // Skip HTTP headers
-  char endOfHeaders[] = "\r\n\r\n";
-  if (!client.find(endOfHeaders)) {
-    #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.println(F("Invalid response"));
-    #endif
-    errorCode = 0x74;
-    return false;
-  }
-  // Allocate JsonBuffer
-  // Use arduinojson.org/assistant to compute the capacity.
-  const size_t capacity = JSON_OBJECT_SIZE(15) + 350;
-  DynamicJsonDocument doc(capacity);
-  // Parse JSON object
-  DeserializationError error = deserializeJson(doc, client);
-  if (error) {
-    #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.println(F("Parsing failed with error :"));
-    SERIAL_DEBUG.println(error.c_str());
-    #endif
-    errorCode = 0x75;
-    return false;
-  }
-  // Extract values
-  char buf[40];
-  strlcpy(buf, doc["datetime"], sizeof(buf));
-  datetime = String(buf);
-  hours = datetime.substring(11, 13).toInt();
-  minutes = datetime.substring(14, 16).toInt();
-  seconds = round(datetime.substring(17, 25).toFloat());
-  // Disconnect
-  client.stop();
-  lastTimeSync = millis() / 1000;
   return true;
+}
+
+
+void getTimeReducedTraffic(int sec) {
+  tm *ptm;
+  if ((millis() - lastEntryTime) < (1000 * sec)) {
+    now = lastNTPtime + (int)(millis() - lastEntryTime) / 1000;
+  } else {
+    leds[STATUS_LED] = CRGB::White;
+    FastLED.show();
+    lastEntryTime = millis();
+    lastNTPtime = time(&now);
+    now = lastNTPtime;
+    Serial.println("Get NTP time");
+  }
+  ptm = localtime(&now);
+  timeinfo = *ptm;
+}
+
+bool requestTime() {
+  getTimeReducedTraffic(REQUEST_EVERY);
 }
 
 
@@ -503,10 +425,7 @@ bool requestTime() {
 /**************************************************************/
 void updateTimeString() {
   timeString = "il est ";
-  int h = hours;
-  if(minutes + seconds / 30 > 32)
-    h++;
-  switch(h) {
+  switch(timeinfo.tm_hour) {
     case 0:
     case 24:
       timeString += "minuit ";
@@ -562,10 +481,10 @@ void updateTimeString() {
       break;
   }
   
-  if(minutes + seconds / 30 > 32 && minutes + seconds / 30 < 58) 
+  if(timeinfo.tm_min + timeinfo.tm_sec / 30 > 32 && timeinfo.tm_min + timeinfo.tm_sec / 30 < 58) 
     timeString += "moins ";
     
-  switch((minutes + 2 + seconds / 30) / 5) {
+  switch((timeinfo.tm_min + 2 + timeinfo.tm_sec / 30) / 5) {
     case 0: // between 0 and 2 minutes
       break;
     case 1: // between 3 and 7 minutes
@@ -632,20 +551,13 @@ void updateLedArray() {
   fill_solid(leds, NB_LEDS, CRGB::Black);
   if(errorCode == 0) {
     CRGB toApply = paletteName == "" ? color : ColorFromPalette(palette, colorIndex);
-    if(messageIndex >= 0) {
-      int ledId = ledIndex(messageLetterIndex);
-      if(ledId >= 0)
-        leds[ledId] = toApply;
-    }
-    else {
-      // fill led array with color value
-      fill_solid(leds, NB_LEDS, toApply);
-      // display time string,
-      // light off unused letters
-      for(int i = 0; i < NB_LEDS; i++) {
-        if(!ledState[i]) {
-          leds[ledIndex(i)] = CRGB::Black;
-        }
+    // fill led array with color value
+    fill_solid(leds, NB_LEDS, toApply);
+    // display time string,
+    // light off unused letters
+    for(int i = 0; i < NB_LEDS; i++) {
+      if(!ledState[i]) {
+        leds[ledIndex(i)] = CRGB::Black;
       }
     }
   }
@@ -689,7 +601,7 @@ void displayLocalIp() {
       }
     }
     FastLED.show();
-    FastLED.delay(2000);
+    FastLED.delay(1750);
     fill_solid(leds, NB_LEDS, CRGB::Black);
     FastLED.show();
     FastLED.delay(250);
