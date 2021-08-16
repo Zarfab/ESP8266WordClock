@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      <title>Configuration - Horloge à mots</title>
+      <meta charset="UTF-8">
+	  <link rel="stylesheet" type="text/css" href="clockstyle.css">
+	  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+      <script type="application/javascript">
+         var timezones;
+		 var palettes;
+		 var paletteName = "";
+         
+         function init() {
+			 getJSON('/timezone.json', function(err, data) {
+				 if (err !== null) {
+					alert('Impossible to load timezone list : ' + err);
+				 } else {
+					 //console.log(data);
+					 timezones = data;
+					 document.getElementById("worldzones").innerHTML = "<p>Zone géographique</p>";
+					 for(var zone in timezones) {
+						 var radioHtml = '<p><input type="radio" name="zone" value="' + zone + '"> ' + zone + '</p>';
+						 document.getElementById("worldzones").innerHTML += radioHtml;
+					 }
+				 }
+			 });
+			 loadConfigData();
+         }
+         
+         function loadConfigData() {
+			 getJSON('/config_data.json', function(err, data) {
+				 if (err !== null) {
+					alert('Impossible to load config values : ' + err);
+				 } else {
+					 //console.log(data);
+					 document.getElementById("color_field").value = data.color;
+					 document.getElementById("use_palette").checked = data.palette != "";
+					 paletteName = data.palette;
+					 document.getElementById("brightness_auto").checked = data.brightness.auto;
+					 document.getElementById("brightness_level").value = data.brightness.level;
+					 
+					 var currentZone = data.location.split("/")[0];
+					 var zones = document.getElementsByName("zone");
+					 for(var i = 0; i < zones.length; i++) {
+						 if(zones[i].value == currentZone) {
+							zones[i].checked = true;
+						 }
+					 }
+					 refreshCities();
+					 var currentCity = data.location.substring(currentZone.length + 1);
+					 var cities = document.getElementsByName("city");
+					 for(var i = 0; i < cities.length; i++) {
+						 if(cities[i].value == currentCity) {
+							cities[i].checked = true;
+						 }
+					 }
+					 toggleBrighntessDisplay();
+					 loadPalettes();
+				 }
+			 });
+         }
+		 
+		 
+		 function loadPalettes() {
+			 getJSON('/color_palettes.json', function(err, data) {
+				 if (err !== null) {
+					alert('Impossible to load color palettes values : ' + err);
+				 } else {
+					 //console.log(data);
+					 palettes = data;
+					 document.getElementById("gradient_style").innerHTML = '<option value="none">Type de dégradé</option>';
+					 for(var key in palettes) {
+						var paletteOption = '<option value="' + key + ':[' + palettes[key] + ']">' + key + '</option>'
+						//console.log(paletteOption)
+						document.getElementById("gradient_style").innerHTML += paletteOption;
+					 }
+					 if(paletteName != "") {
+						//console.log("Palette is set to " + paletteName);
+						document.getElementById("gradient_style").value = paletteName + ':[' + palettes[paletteName] + ']';
+					 }
+					 else {
+						document.getElementById("gradient_style").value = "none"
+					 }
+					 togglePaletteDisplay();
+				 }
+			 });
+         }
+		 
+         
+         function refreshCities() {
+			 document.getElementById("cities").innerHTML = "<p>Pays / Ville</p>";
+			 var worldzone = "";
+			 var zones = document.getElementsByName("zone");
+			 for(var i = 0; i < zones.length; i++) {
+				if(zones[i].checked) worldzone = zones[i].value;
+			 }
+			 var cities = timezones[worldzone];
+			 for(var i = 0; i < cities.length; i++) {
+				var radioHtml = '<p><input type="radio" name="city" value="' + cities[i] + '"> ' + cities[i] + '</p>';
+				document.getElementById("cities").innerHTML += radioHtml;
+			 }
+         }
+         
+         
+         function toggleBrighntessDisplay() {
+			 if(document.getElementById("brightness_auto").checked) {
+				document.getElementById("brightness_fader").style.visibility = "hidden";
+			}
+			 else 
+				document.getElementById("brightness_fader").style.visibility = "visible";
+         }
+		 
+		 
+		 function togglePaletteDisplay() {
+			if(document.getElementById("use_palette").checked) {
+				document.getElementById("color_field").style.display = "none";
+				document.getElementById("gradient_styles").style.visibility = "visible";
+				if(document.getElementById("gradient_style").value != "none") {
+					displayPaletteGradient();
+				}
+			}
+			else {
+				document.getElementById("color_field").style.display = "block";
+				document.getElementById("gradient_styles").style.visibility = "hidden";
+			}
+		 }
+		 
+		 
+		 function displayPaletteGradient() {
+			paletteGradientStyle = "linear-gradient(to right";
+			var i = 0;
+			var currentPalette = document.getElementById("gradient_style").value;
+			var currentPaletteName = currentPalette.substring(0, currentPalette.indexOf(':'));
+			//console.log("currentPalette = " + currentPaletteName);
+			//console.log(palettes[currentPaletteName]);
+			for(var col of palettes[currentPaletteName]) {
+			  paletteGradientStyle += ", " + col + " " + i + "%";
+			  i += 100 / 15;
+			}
+			paletteGradientStyle += ")";
+			document.getElementById("palette").style.background = paletteGradientStyle;
+		 }
+		 
+		 function hello() 
+		  {
+			alert("hello");
+		  }
+			  
+         var getJSON = function(url, callback) {
+			 var xhr = new XMLHttpRequest();
+			 xhr.open('GET', url, true);
+			 xhr.responseType = 'json';
+			 xhr.onload = function() {
+				 var status = xhr.status;
+				 if (status === 200) {
+					callback(null, xhr.response);
+				 } else {
+					callback(status, xhr.response);
+				 }
+			 };
+			 xhr.send();
+         };
+      </script>
+   </head>
+   <body onload="javascript:init()">
+      <div id="box">
+         <form action="/" method="post">
+            <h3>Configuration</h3>
+            <fieldset>
+               <legend>Affichage :</legend>
+               <div style="padding:12px 0px; display:inline-block;margin-right:10px;">Couleur : Unie&nbsp;
+				   <label class="switch">
+				   <input type="checkbox" name="use_palette" id="use_palette" onclick="togglePaletteDisplay()">
+				   <span class="slider round"></span>
+				   </label>
+				 	&nbsp;Degradé&nbsp;
+					<p style="width: 200px;display:inline-block; visibility:hidden;" id="gradient_styles">
+						<select name="gradient_style" id="gradient_style" onchange="displayPaletteGradient()">
+						  <option value="none">Type de dégradé</option>
+						  <option value="Sunset">Sunset</option>
+						  <option value="Rainbow">Rainbow</option>
+						</select>
+					</p>
+				</div>
+				<div id="palette" style="width:100%; height:40px; background: linear-gradient(to right, #777 0%, #999 100%)">
+					<input type="color" id="color_field" name="color" value="#000000" style="width:100%; height:100%; border:0px">
+				</div>
+				<div style="padding:12px 0px; margin:auto;">
+               <p>Luminosité : Fixe&nbsp;<label class="switch">
+					<input type="checkbox" name="brightness_auto" id="brightness_auto" onclick="toggleBrighntessDisplay()">
+					<span class="slider round"></span> 
+				</label>
+				&nbsp;Auto
+				</p>
+               <p id="brightness_fader"><input type="range" name="brightness_level" id="brightness_level" min="1" max="100" value="1" style="width: 100%"></p>
+			   </div>
+            </fieldset>
+            <br><br>
+            <fieldset>
+               <legend>Fuseau horaire :</legend>
+               <div class="row">
+                  <div id="worldzones" class="column" onclick="refreshCities()">
+                     <p>Zone géographique</p>
+					 <p><input type="radio" name="zone" value="Zone0"> Zone[0]</p>
+					 <p><input type="radio" name="zone" value="Zone1"> Zone[1]</p>
+                  </div>
+                  <div id="cities" class="column">
+                     <p>Pays / Ville</p>
+					 <p><input type="radio" name="city" value="City0"> City[0]</p>
+					 <p><input type="radio" name="city" value="City1"> City[1]</p>
+                  </div>
+               </div>
+            </fieldset>
+            <br>
+            <input class="button" type="submit">
+            <input class="button" type="reset" onclick="loadConfigData()">
+         </form>
+      </div>
+   </body>
+</html>
+<noscript>
+   Sorry, ESP-radio does not work without JavaScript!
+</noscript>

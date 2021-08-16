@@ -1,0 +1,132 @@
+body {
+	background-color: #202020;
+	color: white;
+	font-family:"Lucida Console", Monaco, monospace;
+}
+h3   {
+	color: lightgray;
+}
+p    {
+	color: white;
+}
+.switch {
+	position: relative;
+	display: inline-block;
+	width: 40px;
+	height: 23px;
+}
+.switch input { 
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+.slider {
+	position: absolute;
+	cursor: pointer;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: #ccc;
+	-webkit-transition: .4s;
+	transition: .4s;
+}
+.slider:before {
+	position: absolute;
+	content: "";
+	height: 17px;
+	width: 17px;
+	left: 3px;
+	bottom: 3px;
+	background-color: white;
+	-webkit-transition: .4s;
+	transition: .4s;
+}
+input:checked + .slider {
+	background-color: #21CC96;
+}
+input:focus + .slider {
+	box-shadow: 0 0 1px #21CC96;
+}
+input:checked + .slider:before {
+	-webkit-transform: translateX(17px);
+	-ms-transform: translateX(17px);
+	transform: translateX(17px);
+}
+/* Rounded sliders */
+.slider.round {
+	border-radius: 23px;
+}
+.slider.round:before {
+	border-radius: 50%;
+}
+.row{
+	display:flex;
+	flex-direction:row;
+	justify-content: space-around;
+}
+.column{
+	display:flex;
+	flex-direction:column;
+	text-align:left;
+}
+.button{
+	font-size:20px;
+	min-height:32px;
+	padding:8px 12px;
+	margin:auto;
+}
+input[type='radio']:after {
+	width: 17px;
+	height: 17px;
+	border-radius: 17px;
+	top: -2px;
+	left: -1px;
+	position: relative;
+	background-color: #CCC;
+	content: '';
+	display: inline-block;
+	visibility: visible;
+}
+input[type='radio']:checked:after {
+	width: 13px;
+	height: 13px;
+	border-radius: 17px;
+	top: -3px;
+	left: -3px;
+	position: relative;
+	background-color: #21CC96;
+	content: '';
+	display: inline-block;
+	visibility: visible;
+	border: 6px solid white;
+}
+#box{
+	max-width:640px;
+	min-width:480px;
+	margin:auto;
+	margin-top:24px;
+	margin-bottom:24px;
+	padding:12px;
+	background:black;
+	border: 3px solid gray;
+	border-radius: 25px;
+}
+
+select#gradient_style{
+   -webkit-appearance: button;
+   -webkit-padding-end: 20px;
+   -webkit-padding-start: 2px;
+   -webkit-user-select: none;
+   background-color: #21CC96;
+   background-position: 97% center;
+   background-repeat: no-repeat;
+   color: #fff;
+   font-size: inherit;
+   margin: 20px 0px;
+   overflow: hidden;
+   padding: 5px 4px;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+   width: 200px;
+}
