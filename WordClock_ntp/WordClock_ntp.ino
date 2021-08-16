@@ -36,7 +36,6 @@ const int MIN_BRIGHTNESS = 2;
 
 ESP8266WebServer server(80);
 
-uint8_t errorCode = 0;
 CRGB leds[NB_LEDS];
 bool ledState[NB_LEDS];
 CRGB color = CRGB::White;
@@ -586,32 +585,14 @@ void updateTimeString() {
 void updateLedArray() {
   // reset display
   fill_solid(leds, NB_LEDS, CRGB::Black);
-  if(errorCode == 0) {
-    CRGB toApply = paletteName == "" ? color : ColorFromPalette(palette, colorIndex);
-    // fill led array with color value
-    fill_solid(leds, NB_LEDS, toApply);
-    // display time string,
-    // light off unused letters
-    for(int i = 0; i < NB_LEDS; i++) {
-      if(!ledState[i]) {
-        leds[ledIndex(i)] = CRGB::Black;
-      }
-    }
-  }
-  else {
-    for(int i = 3; i < 10; i++) {
-      leds[i] = CRGB::Red;
-    }
-    for(int i = 6; i >=0; i--) {
-      int index = i + 55;
-      uint8_t bitval = errorCode & uint8_t(pow(2, 6-i));
-      if(bitval > 0)
-        leds[index] = CRGB::Orange;
-      else
-        leds[index] = CRGB::Black;
-    }
-    for(int i = 94; i < 101; i++) {
-      leds[i] = CRGB::Red;
+  CRGB toApply = paletteName == "" ? color : ColorFromPalette(palette, colorIndex);
+  // fill led array with color value
+  fill_solid(leds, NB_LEDS, toApply);
+  // display time string,
+  // light off unused letters
+  for(int i = 0; i < NB_LEDS; i++) {
+    if(!ledState[i]) {
+      leds[ledIndex(i)] = CRGB::Black;
     }
   }
 }
