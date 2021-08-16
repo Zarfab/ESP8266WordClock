@@ -1,7 +1,7 @@
 #ifndef DISPLAY_UTILS_H
 #define DISPLAY_UTILS_H
 
-#define VERSION 0 // 0 = old letters layout, above = new
+#define VERSION 1 // 0 = old letters layout, above = new
 
 #define LETTER_PER_LINE 13
 #define NB_LINES 8

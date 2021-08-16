@@ -3,6 +3,8 @@
 #include <WiFiManager.h>         //https://github.com/tzapu/WiFiManager
 #include <time.h>
 #include <ArduinoJson.h>
+#define FASTLED_INTERRUPT_RETRY_COUNT 0
+#define FASTLED_ALLOW_INTERRUPTS 0
 #define FASTLED_INTERNAL // Disable version number message in FastLED library (looks like an error)
 #include <FastLED.h>
 #include <FS.h>
