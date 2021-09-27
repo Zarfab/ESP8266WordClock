@@ -12,6 +12,12 @@
 
 #include "display_utils.h"
 
+#define USE_RTC
+#ifdef USE_RTC
+  #include "RTClib.h"
+  RTC_DS1307 rtc;
+#endif
+
 #define SERIAL_DEBUG Serial
 
 #define CONFIG_FILE "/last_config.json"
@@ -19,21 +25,20 @@
 
 #define REQUEST_EVERY 1200 // request time 20 minutes (1200 seconds)
 #define REFRESH_TIMESTRING_EVERY 30 // refresh time string every 30 seconds
-#define IGNORE_SYNC_ERROR_FOR 86400 // ignore sync error for 24h (24 * 3600)
-#define PHOTORESISTOR_LOW 40
+#define PHOTORESISTOR_LOW 20
 #define PHOTORESISTOR_HIGH 900
 
 #define LED_PIN D5
 #define NB_LEDS 104
 #define STATUS_LED 2
-#define BRIGHTNESS_FILTER_SIZE 127
+#define BRIGHTNESS_FILTER_SIZE 19
 #define FASTLED_REFRESH 100 // refresh display every 100 ms
 #define POWER_SUPPLY_I_MAX 2000 // maximum intensity from power supply in mA, 500mA if powering from computer USB
 const int MAX_BRIGHTNESS = constrain(floor(255.0 / ((NB_LEDS * 30.0) / POWER_SUPPLY_I_MAX)), 1, 255);
-const int MIN_BRIGHTNESS = 2;
+const int MIN_BRIGHTNESS = 3;
 
 
-
+WiFiManager wifiManager;
 ESP8266WebServer server(80);
 
 CRGB leds[NB_LEDS];
@@ -52,7 +57,7 @@ String city = "Paris";
 String tzInfo = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
 tm timeinfo;
 time_t now;
-long unsigned lastNTPtime;
+unsigned long lastSyncTime;
 unsigned long lastEntryTime;
 unsigned int refreshTimeStringTimer;
 String timeString;
@@ -203,7 +208,11 @@ void handleConfig() {
       ", TZ_INFO = " + tzInfo);
     #endif
     setenv("TZ", tzInfo.c_str(), 1);
-    getNTPtime(10);
+    #ifndef USE_RTC
+      getNTPtime(10);
+    #else
+      getRTCTimeReduced(1);
+    #endif
     #ifdef SERIAL_DEBUG
     SERIAL_DEBUG.printf("it is %02d:%02d:%02d at %s\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, city.c_str());
     #endif
@@ -242,7 +251,7 @@ void setup() {
   File f = SPIFFS.open(CONFIG_FILE, "r");
   if (!f) {
     #ifdef SERIAL_DEBUG
-      SERIAL_DEBUG.println("file open failed");
+      SERIAL_DEBUG.println("[SPIFSS] file open failed");
     #endif
   }
   else {
@@ -284,6 +293,7 @@ void setup() {
     f.close();
     #ifdef SERIAL_DEBUG
       serializeJsonPretty(doc, SERIAL_DEBUG);
+      SERIAL_DEBUG.println();
     #endif
   }
 
@@ -303,8 +313,25 @@ void setup() {
   FastLED.show();
   FastLED.delay(500);
 
-  WiFiManager wifiManager;
-  wifiManager.autoConnect("WordClockAP");
+  IPAddress myIp;
+  #ifndef USE_RTC
+    WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+    #ifdef SERIAL_DEBUG
+      SERIAL_DEBUG.printf("[WIFIMANAGER] Trying to connect\n");
+    #endif
+    wifiManager.autoConnect("WordClockAP");
+    myIp = WiFi.localIP();
+    #ifdef SERIAL_DEBUG
+      SERIAL_DEBUG.printf("[WIFI] Connected to %s, IP : %s\n", WiFi.SSID(), myIp.toString().c_str());
+    #endif
+  #else
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("WordClockRTC_AP");
+    myIp = WiFi.softAPIP();
+    #ifdef SERIAL_DEBUG
+      SERIAL_DEBUG.printf("[WIFI_AP] Access Point started : %s, IP : %s\n", "WordClockRTC_AP", myIp.toString().c_str());
+    #endif
+  #endif
 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/", HTTP_POST, handleConfig);
@@ -316,33 +343,40 @@ void setup() {
   });
   server.begin();
   #ifdef SERIAL_DEBUG
-  SERIAL_DEBUG.println(F("HTTP server started"));
+  SERIAL_DEBUG.println(F("[SERVER] HTTP server started"));
   #endif
-
-  refreshTimeStringTimer = 1;
 
   leds[STATUS_LED] = CRGB::Green;
   FastLED.show();
   FastLED.delay(500);
 
-  displayLocalIp();
+  displayLocalIp(myIp);
 
-  configTime(0, 0, NTP_SERVER);
-  setenv("TZ", tzInfo.c_str(), 1);
   
-  if(getNTPtime(10)) {
-    #ifdef SERIAL_DEBUG
-    SERIAL_DEBUG.printf("it is %02d:%02d:%02d at %s\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, city.c_str());
-    #endif
-    updateTimeString();
-  }
-  else {
-    Serial.println("Time not set");
-    ESP.restart();
-  }
-  lastNTPtime = time(&now);
+  setenv("TZ", tzInfo.c_str(), 1);
+  #ifndef USE_RTC
+    configTime(0, 0, NTP_SERVER);    
+    if(!getNTPtime(10)) {
+      Serial.println("[NTP] Time not set");
+      ESP.restart();
+    }
+    lastSyncTime = time(&now);
+  #else
+    if (!rtc.begin()) {
+      Serial.println("[RTC] Couldn't find RTC");
+      ESP.restart();
+    }
+    lastSyncTime = rtc.now().unixtime();
+    now = lastSyncTime;
+    timeinfo = *localtime(&now);
+  #endif
+  #ifdef SERIAL_DEBUG
+    SERIAL_DEBUG.printf("[TIME] it is %02d:%02d:%02d at %s\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, city.c_str());
+  #endif
   lastEntryTime = millis();
   refreshTimeStringTimer = millis();
+  
+  updateTimeString();
 
   // switch off on board blue LED
   digitalWrite(LED_BUILTIN, HIGH);
@@ -354,7 +388,11 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  getTimeReducedTraffic(REQUEST_EVERY);
+  #ifndef USE_RTC
+  getNTPTimeReducedTraffic(REQUEST_EVERY); // update time from NTP
+  #else
+  getRTCTimeReduced(REQUEST_EVERY); // update time from RTC
+  #endif
 
   if(brightnessAuto) {
     brightnessFilter.in(constrain(map(analogRead(A0), PHOTORESISTOR_LOW, PHOTORESISTOR_HIGH, MIN_BRIGHTNESS, MAX_BRIGHTNESS),
@@ -388,43 +426,56 @@ void loop() {
 /****        Time sync functions                       ********/
 /**************************************************************/
 bool getNTPtime(int sec) {
-
-  {
-    uint32_t start = millis();
-    do {
-      time(&now);
-      localtime_r(&now, &timeinfo);
-      delay(10);
-    } while (((millis() - start) <= (1000 * sec)) && (timeinfo.tm_year < (2016 - 1900)));
-    if (timeinfo.tm_year <= (2016 - 1900)) return false;  // the NTP call was not successful
-    char time_output[30];
-    strftime(time_output, 30, "%a  %d-%m-%Y %T", localtime(&now));
-    Serial.println(time_output);
-    Serial.println();
-  }
+  uint32_t start = millis();
+  do {
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    delay(10);
+  } while (((millis() - start) <= (1000 * sec)) && (timeinfo.tm_year < (2016 - 1900)));
+  if (timeinfo.tm_year <= (2016 - 1900)) 
+    return false;  // the NTP call was not successful
+  char time_output[30];
+  strftime(time_output, 30, "%a  %d-%m-%Y %T", localtime(&now));
+  Serial.println(time_output);
+  Serial.println();
   return true;
 }
 
 
-void getTimeReducedTraffic(int sec) {
+void getNTPTimeReducedTraffic(int sec) {
   tm *ptm;
   if ((millis() - lastEntryTime) < (1000 * sec)) {
-    now = lastNTPtime + (int)(millis() - lastEntryTime) / 1000;
+    now = lastSyncTime + (int)(millis() - lastEntryTime) / 1000;
   } else {
     leds[STATUS_LED] = CRGB::White;
     FastLED.show();
     lastEntryTime = millis();
-    lastNTPtime = time(&now);
-    now = lastNTPtime;
+    lastSyncTime = time(&now);
+    now = lastSyncTime;
     Serial.println("Get NTP time");
   }
   ptm = localtime(&now);
   timeinfo = *ptm;
 }
 
-bool requestTime() {
-  getTimeReducedTraffic(REQUEST_EVERY);
+
+void getRTCTimeReduced(int sec) {
+  tm *ptm;
+  if ((millis() - lastEntryTime) < (1000 * sec)) {
+    now = lastSyncTime + (int)(millis() - lastEntryTime) / 1000;
+  }
+  else {
+    leds[STATUS_LED] = CRGB::Yellow;
+    FastLED.show();
+    lastEntryTime = millis();
+    lastSyncTime = rtc.now().unixtime();
+    now = lastSyncTime;
+    Serial.println("Get RTC time");
+  }
+  ptm = localtime(&now);
+  timeinfo = *ptm;
 }
+
 
 void updateTzInfo() {
   File f = SPIFFS.open("/timezones.json", "r");
@@ -598,10 +649,9 @@ void updateLedArray() {
 }
 
 
-void displayLocalIp() {
+void displayLocalIp(IPAddress ip) {
     // reset display
   fill_solid(leds, NB_LEDS, CRGB::Black);
-  IPAddress ip = WiFi.localIP();
   for(int i = 0; i < 4; i++) {
     for(int i = 0; i < NB_LEDS; i++)
       ledState[i] = false;
