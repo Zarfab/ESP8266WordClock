@@ -6,6 +6,8 @@
 	  <link rel="stylesheet" type="text/css" href="clockstyle.css">
 	  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
       <script type="application/javascript">
+		const zeroPad = (num, places) => String(num).padStart(places, '0')
+
          var timezones;
 		 var palettes;
 		 var paletteName = "";
@@ -33,6 +35,19 @@
 					alert('Impossible to load config values : ' + err);
 				 } else {
 					 //console.log(data);
+					 if(data.rtc != "" && data.rtc != null) {
+						document.getElementById("rtc_setting").hidden = false;
+						setInterval(function() {
+							//var d = new Date();
+							//var timeString = zeroPad(d.getHours(), 2) + ":" + zeroPad(d.getMinutes(), 2) + ":" + zeroPad(d.getSeconds(), 2);
+							var timeString = "" + Date.now()/1000;
+							document.getElementById("current_time").value = timeString;
+						}, 1000);
+
+					 }
+					 else {
+						document.getElementById("rtc_setting").hidden = true;
+					 }
 					 document.getElementById("color_field").value = data.color;
 					 document.getElementById("use_palette").checked = data.palette != "";
 					 paletteName = data.palette;
@@ -162,6 +177,12 @@
       <div id="box">
          <form action="/" method="post">
             <h3>Configuration</h3>
+			<fieldset id="rtc_setting">
+				<legend>Réglage de l'heure :</legend>
+				<p>L'heure sera réglée automatiquement quand vous cliquerez sur le bouton "Envoyer" en bas de page</p>
+				<p hidden=true>Heure actuelle : <input type="text" name="current_time" id="current_time" value="0000" size=8/></p>
+			</fieldset>
+			<br><br>
             <fieldset>
                <legend>Affichage :</legend>
                <div style="padding:12px 0px; display:inline-block;margin-right:10px;">Couleur : Unie&nbsp;
@@ -215,5 +236,5 @@
    </body>
 </html>
 <noscript>
-   Sorry, ESP-radio does not work without JavaScript!
+   Sorry, ESPWordClock does not work without JavaScript!
 </noscript>

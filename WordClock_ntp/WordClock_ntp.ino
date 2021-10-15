@@ -12,7 +12,7 @@
 
 #include "display_utils.h"
 
-#define USE_RTC
+#define USE_RTC "ds1307"
 #ifdef USE_RTC
   #include "RTClib.h"
   RTC_DS1307 rtc;
@@ -139,6 +139,9 @@ void sendConfigData() {
   JsonObject locationObj = doc.createNestedObject("location");
   locationObj["zone"] = zone;
   locationObj["city"] = city;
+  #ifdef USE_RTC
+  doc["rtc"] = USE_RTC;
+  #endif
   String data_str;
   serializeJson(doc, data_str);
   File f = SPIFFS.open(CONFIG_FILE, "w");
@@ -166,6 +169,12 @@ void handleConfig() {
     message += server.arg(i) + "\n";              //Get the value of the parameter 
   }
   SERIAL_DEBUG.print(message);*/
+  #endif
+  #ifdef USE_RTC
+  if(server.hasArg("current_time")) {
+    long int currentUnixTime= strtol(server.arg("current_time").c_str(), NULL, 10);
+    rtc.adjust(DateTime(currentUnixTime));
+  }
   #endif
   if(server.hasArg("color")) {
     color = strtol(server.arg("color").substring(1).c_str(), NULL, 16);
@@ -458,7 +467,7 @@ void getNTPTimeReducedTraffic(int sec) {
   timeinfo = *ptm;
 }
 
-
+#ifdef USE_RTC
 void getRTCTimeReduced(int sec) {
   tm *ptm;
   if ((millis() - lastEntryTime) < (1000 * sec)) {
@@ -475,7 +484,7 @@ void getRTCTimeReduced(int sec) {
   ptm = localtime(&now);
   timeinfo = *ptm;
 }
-
+#endif
 
 void updateTzInfo() {
   File f = SPIFFS.open("/timezones.json", "r");
