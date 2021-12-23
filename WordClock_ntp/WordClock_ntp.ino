@@ -400,6 +400,7 @@ void loop() {
   #ifndef USE_RTC
   getNTPTimeReducedTraffic(REQUEST_EVERY); // update time from NTP
   #else
+  if(!rtc.isrunning()) return;
   getRTCTimeReduced(REQUEST_EVERY); // update time from RTC
   #endif
 
